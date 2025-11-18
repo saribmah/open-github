@@ -151,23 +151,13 @@ interface ProxyRequest extends Request {
   targetUrl?: string;
 }
 
-// Helper function to send JSON error response with CORS headers
+// Helper function to send JSON error response
 function sendError(
   res: Response,
-  req: Request,
   status: number,
   error: string,
   message: string,
 ) {
-  const origin = req.headers.origin || "*";
-  res.set({
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-    "Access-Control-Allow-Headers":
-      "Content-Type, Authorization, X-Requested-With",
-    "Content-Type": "application/json",
-  });
   res.status(status).json({ error, message });
 }
 
@@ -206,9 +196,14 @@ const proxyOptions: Options<Request, Response> = {
     proxyReq: (proxyReq, req, res) => {
       const customReq = req as ProxyRequest;
 
-      // If there was a routing error, abort the proxy request
+      // Handle routing errors
       if (customReq.proxyError) {
-        proxyReq.destroy();
+        sendError(
+          res as Response,
+          500,
+          "ProxyError",
+          customReq.proxyError.message,
+        );
         return;
       }
 
@@ -228,20 +223,9 @@ const proxyOptions: Options<Request, Response> = {
       }
     },
 
-    proxyRes: (proxyRes, req, res) => {
-      const proxyReq = req as ProxyRequest;
-
-      // Add CORS headers to the response
-      const origin = req.headers.origin || "*";
-      res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Access-Control-Allow-Credentials", "true");
-      res.setHeader(
-        "Access-Control-Expose-Headers",
-        "Content-Length, Content-Type",
-      );
-
-      // Log non-200 responses
+    proxyRes: (proxyRes, req) => {
       if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
+        const proxyReq = req as ProxyRequest;
         console.warn(
           `⚠️  HTTP ${proxyRes.statusCode} from ${proxyReq.targetUrl}`,
         );
@@ -250,26 +234,12 @@ const proxyOptions: Options<Request, Response> = {
 
     error: (err, req, res) => {
       console.error("❌ Proxy error:", err.message);
-      const proxyReq = req as ProxyRequest;
-
-      // If there was a routing error, send that error
-      if (proxyReq.proxyError) {
-        sendError(
-          res as Response,
-          req,
-          500,
-          "ProxyError",
-          proxyReq.proxyError.message,
-        );
-      } else {
-        sendError(
-          res as Response,
-          req,
-          502,
-          "BadGateway",
-          "Failed to connect to sandbox",
-        );
-      }
+      sendError(
+        res as Response,
+        502,
+        "BadGateway",
+        "Failed to connect to sandbox",
+      );
     },
   },
 };
@@ -279,28 +249,16 @@ const proxyMiddleware = createProxyMiddleware(proxyOptions);
 // Create Express app
 const app = express();
 
-// CORS middleware - must be before any routes
+// CORS middleware
 app.use(
   cors({
     origin: ALLOWED_ORIGINS.includes("*") ? true : ALLOWED_ORIGINS,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-    ],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     exposedHeaders: ["Content-Length", "Content-Type"],
-    preflightContinue: false,
-    optionsSuccessStatus: 204,
   }),
 );
-
-// Explicit OPTIONS handler for preflight requests
-app.options("*", (_req: Request, res: Response) => {
-  res.status(204).end();
-});
 
 // Health check endpoint
 app.get("/health", (_req: Request, res: Response) => {
