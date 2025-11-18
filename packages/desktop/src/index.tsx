@@ -160,6 +160,10 @@ function SandboxRouter() {
                   <MetaProvider>
                     <Fonts />
                     <Router root={Layout}>
+                      <Route path="/:owner/:repo" component={SessionLayout}>
+                        <Route path="/session/:id?" component={Session} />
+                        <Route path="/" component={Session} />
+                      </Route>
                       <Route path={["/", "/session"]} component={SessionLayout}>
                         <Route path="/:id?" component={Session} />
                       </Route>
