@@ -184,7 +184,14 @@ const proxyOptions: Options<Request, Response> = {
         "writeHead" in res &&
         typeof res.writeHead === "function"
       ) {
-        res.writeHead(500, { "Content-Type": "application/json" });
+        // Add CORS headers to error responses
+        const origin = req.headers.origin || "http://localhost:5173";
+        res.writeHead(500, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": origin,
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Expose-Headers": "Content-Length,Content-Type",
+        });
         if ("end" in res && typeof res.end === "function") {
           res.end(
             JSON.stringify({
@@ -206,6 +213,11 @@ const proxyOptions: Options<Request, Response> = {
       delete proxyRes.headers["access-control-expose-headers"];
       delete proxyRes.headers["access-control-max-age"];
 
+      // Remove content-encoding to prevent Cloudflare/browser decompression issues
+      // Let Cloudflare re-compress if needed
+      delete proxyRes.headers["content-encoding"];
+      delete proxyRes.headers["content-length"]; // Must be removed when removing encoding
+
       // Handle non-200 responses
       if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
         const customReq = req as CustomRequest;
@@ -217,7 +229,14 @@ const proxyOptions: Options<Request, Response> = {
     error: (err, req, res) => {
       console.error("❌ Proxy middleware error:", err);
       if ("writeHead" in res && typeof res.writeHead === "function") {
-        res.writeHead(502, { "Content-Type": "application/json" });
+        // Add CORS headers to error responses
+        const origin = req.headers.origin || "http://localhost:5173";
+        res.writeHead(502, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": origin,
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Expose-Headers": "Content-Length,Content-Type",
+        });
         if ("end" in res && typeof res.end === "function") {
           res.end(
             JSON.stringify({
