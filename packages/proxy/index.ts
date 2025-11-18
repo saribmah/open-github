@@ -176,6 +176,12 @@ const proxyOptions: Options<Request, Response> = {
   autoRewrite: true,
   ws: true, // Enable WebSocket support
   xfwd: true,
+  // SSE (Server-Sent Events) configuration
+  // Don't buffer streaming responses
+  selfHandleResponse: false,
+  // Increase timeout for long-lived connections
+  proxyTimeout: 0, // No timeout for streaming
+  timeout: 0, // No timeout
   on: {
     proxyReq: (proxyReq, req, res) => {
       const customReq = req as CustomRequest;
@@ -184,6 +190,17 @@ const proxyOptions: Options<Request, Response> = {
       // This prevents duplicate CORS headers and skips the preview warning page
       proxyReq.setHeader("X-Daytona-Disable-CORS", "true");
       proxyReq.setHeader("X-Daytona-Skip-Preview-Warning", "true");
+
+      // For SSE (Server-Sent Events), ensure proper headers
+      if (
+        req.url === "/event" ||
+        req.headers.accept?.includes("text/event-stream")
+      ) {
+        proxyReq.setHeader("Accept", "text/event-stream");
+        proxyReq.setHeader("Cache-Control", "no-cache");
+        proxyReq.setHeader("Connection", "keep-alive");
+        console.log("🌊 Streaming request detected: " + req.url);
+      }
 
       if (
         customReq._err &&
@@ -213,10 +230,18 @@ const proxyOptions: Options<Request, Response> = {
       // Daytona won't send CORS headers because we set X-Daytona-Disable-CORS: true
       // Our Express CORS middleware will add the correct headers
 
-      // Remove content-encoding to prevent Cloudflare/browser decompression issues
-      // Let Cloudflare re-compress if needed
-      delete proxyRes.headers["content-encoding"];
-      delete proxyRes.headers["content-length"]; // Must be removed when removing encoding
+      // For SSE responses, preserve content-type and don't remove encoding
+      const isSSE =
+        proxyRes.headers["content-type"]?.includes("text/event-stream");
+
+      if (!isSSE) {
+        // Remove content-encoding to prevent Cloudflare/browser decompression issues
+        // Let Cloudflare re-compress if needed
+        delete proxyRes.headers["content-encoding"];
+        delete proxyRes.headers["content-length"]; // Must be removed when removing encoding
+      } else {
+        console.log("🌊 SSE response detected, preserving headers");
+      }
 
       // Handle non-200 responses
       if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
