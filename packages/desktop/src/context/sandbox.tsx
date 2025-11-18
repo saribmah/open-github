@@ -5,8 +5,27 @@ import {
   onMount,
   ParentComponent,
 } from "solid-js";
+import FingerprintJS from "@fingerprintjs/fingerprintjs";
 
 export type SandboxStatus = "idle" | "loading" | "ready" | "error";
+
+// Get or create browser fingerprint
+async function getBrowserFingerprint(): Promise<string> {
+  try {
+    const fp = await FingerprintJS.load();
+    const result = await fp.get();
+    return result.visitorId;
+  } catch (error) {
+    console.error("Failed to generate fingerprint:", error);
+    // Fallback to a random ID stored in localStorage
+    let fallbackId = localStorage.getItem("opencode-user-id");
+    if (!fallbackId) {
+      fallbackId = `user-${Math.random().toString(36).substring(2, 15)}`;
+      localStorage.setItem("opencode-user-id", fallbackId);
+    }
+    return fallbackId;
+  }
+}
 
 interface SandboxContextType {
   sandboxUrl: () => string | null;
@@ -50,13 +69,17 @@ export const SandboxProvider: ParentComponent<SandboxProviderProps> = (
         `🚀 Requesting sandbox for ${owner}/${repo}${branch ? `@${branch}` : ""}`,
       );
 
+      // Get browser fingerprint for user identification
+      const userId = await getBrowserFingerprint();
+      console.log(`  👤 User ID: ${userId}`);
+
       // Create sandbox
       const createResponse = await fetch(`${API_URL}/api/sandbox/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ owner, repo, branch }),
+        body: JSON.stringify({ owner, repo, branch, userId }),
       });
 
       if (!createResponse.ok) {

@@ -14,6 +14,7 @@ export class SessionManager {
    * Create a new session
    */
   create(
+    userId: string,
     owner: string,
     repo: string,
     provider: SandboxProvider,
@@ -22,6 +23,7 @@ export class SessionManager {
     const now = new Date();
     const session: Session = {
       id: ulid(),
+      userId,
       owner,
       repo,
       sandboxUrl: "", // Will be set when sandbox is ready
@@ -51,11 +53,12 @@ export class SessionManager {
   }
 
   /**
-   * Find a session by repository
+   * Find a session by repository and user
    */
-  findByRepo(owner: string, repo: string): Session | null {
+  findByRepo(userId: string, owner: string, repo: string): Session | null {
     for (const session of this.sessions.values()) {
       if (
+        session.userId === userId &&
         session.owner === owner &&
         session.repo === repo &&
         (session.status === "provisioning" || session.status === "ready")

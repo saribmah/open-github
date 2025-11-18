@@ -68,6 +68,19 @@ app.post("/api/sandbox/create", async (c) => {
     );
   }
 
+  // Get userId from request (browser fingerprint)
+  const userId = body.userId || c.req.header("X-User-ID") || "anonymous";
+
+  if (!body.userId && userId === "anonymous") {
+    return c.json(
+      {
+        error: "ValidationError",
+        message: "userId is required for session isolation",
+      },
+      400,
+    );
+  }
+
   const { owner, repo, branch } = body;
 
   console.log(
@@ -86,8 +99,8 @@ app.post("/api/sandbox/create", async (c) => {
     );
   }
 
-  // Check for existing session
-  const existingSession = sessionManager.findByRepo(owner, repo);
+  // Check for existing session for this user
+  const existingSession = sessionManager.findByRepo(userId, owner, repo);
   if (existingSession && existingSession.status === "ready") {
     console.log(`  ♻️  Reusing existing session: ${existingSession.id}`);
     return c.json({
@@ -117,12 +130,13 @@ app.post("/api/sandbox/create", async (c) => {
 
   // Create session
   const session = sessionManager.create(
+    userId,
     owner,
     repo,
     config.sandbox.provider,
     config.sandbox.sessionTimeout,
   );
-  console.log(`  🆔 Session created: ${session.id}`);
+  console.log(`  🆔 Session created: ${session.id} for user: ${userId}`);
 
   // Provision sandbox asynchronously
   (async () => {

@@ -6,6 +6,7 @@ export type SandboxProvider = "docker" | "daytona";
 
 export interface Session {
   id: string; // ULID
+  userId: string; // Browser fingerprint or user identifier
   owner: string;
   repo: string;
   sandboxUrl: string;
