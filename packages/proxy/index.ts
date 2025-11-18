@@ -7,10 +7,15 @@ import { Daytona } from "@daytonaio/sdk";
 
 dotenv.config({ quiet: true });
 
+// Environment variables
 const DAYTONA_API_KEY = process.env.DAYTONA_API_KEY;
 const PORT = process.env.PORT || 3002;
+const HOST = process.env.HOST || "0.0.0.0";
 const PROXY_DOMAIN = process.env.PROXY_DOMAIN || "localhost";
-const CACHE_TTL = parseInt(process.env.CACHE_TTL || "300000", 10); // 5 minutes default
+const CACHE_TTL = parseInt(process.env.CACHE_TTL || "300000", 10);
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(",").map((o) =>
+  o.trim(),
+) || ["*"];
 
 if (!DAYTONA_API_KEY) {
   throw new Error("DAYTONA_API_KEY is not set");
@@ -19,7 +24,7 @@ if (!DAYTONA_API_KEY) {
 // Initialize Daytona SDK
 const daytona = new Daytona({
   apiKey: DAYTONA_API_KEY,
-  target: "us", // Can be made configurable
+  target: "us",
 });
 
 // Cache for sandbox preview URLs
@@ -140,18 +145,27 @@ async function getPreviewUrl(sandboxId: string, port: number): Promise<string> {
   return previewUrl;
 }
 
-// Custom request interface to store error info
-interface CustomRequest extends Request {
-  _err?: Error;
-  _targetUrl?: string;
+// Extended request interface for error tracking
+interface ProxyRequest extends Request {
+  proxyError?: Error;
+  targetUrl?: string;
 }
 
-/**
- * Create proxy middleware
- */
+// Helper function to send JSON error response
+function sendError(
+  res: Response,
+  status: number,
+  error: string,
+  message: string,
+) {
+  res.status(status).json({ error, message });
+}
+
+// Create proxy middleware
 const proxyOptions: Options<Request, Response> = {
   router: async (req: Request) => {
-    const customReq = req as CustomRequest;
+    const proxyReq = req as ProxyRequest;
+
     try {
       if (!req.headers.host) {
         throw new Error("Host header is required");
@@ -160,38 +174,44 @@ const proxyOptions: Options<Request, Response> = {
       const { sandboxId, port } = parseSandboxInfo(req.headers.host);
       const url = await getPreviewUrl(sandboxId, port);
 
-      customReq._targetUrl = url;
-      console.log(`🔄 Proxying ${req.method} ${req.url} → ${url}`);
+      proxyReq.targetUrl = url;
+      console.log(`🔄 ${req.method} ${req.url} → ${url}`);
 
       return url;
     } catch (error) {
       console.error("❌ Router error:", error);
-      customReq._err = error as Error;
+      proxyReq.proxyError = error as Error;
+      return "http://localhost:1"; // Dummy URL, error handled in proxyReq hook
     }
-
-    // Return dummy URL on error (will be handled by error handlers)
-    return "http://localhost:1";
   },
+
   changeOrigin: true,
   autoRewrite: true,
-  ws: true, // Enable WebSocket support
+  ws: true,
   xfwd: true,
-  // SSE (Server-Sent Events) configuration
-  // Don't buffer streaming responses
-  selfHandleResponse: false,
-  // Increase timeout for long-lived connections
-  proxyTimeout: 0, // No timeout for streaming
-  timeout: 0, // No timeout
+  proxyTimeout: 0,
+  timeout: 0,
+
   on: {
     proxyReq: (proxyReq, req, res) => {
-      const customReq = req as CustomRequest;
+      const customReq = req as ProxyRequest;
 
-      // Add Daytona-specific headers to disable their CORS and preview warning
-      // This prevents duplicate CORS headers and skips the preview warning page
+      // Handle routing errors
+      if (customReq.proxyError) {
+        sendError(
+          res as Response,
+          500,
+          "ProxyError",
+          customReq.proxyError.message,
+        );
+        return;
+      }
+
+      // Set Daytona headers to disable their CORS and preview warning
       proxyReq.setHeader("X-Daytona-Disable-CORS", "true");
       proxyReq.setHeader("X-Daytona-Skip-Preview-Warning", "true");
 
-      // For SSE (Server-Sent Events), ensure proper headers
+      // Handle SSE requests
       if (
         req.url === "/event" ||
         req.headers.accept?.includes("text/event-stream")
@@ -199,65 +219,27 @@ const proxyOptions: Options<Request, Response> = {
         proxyReq.setHeader("Accept", "text/event-stream");
         proxyReq.setHeader("Cache-Control", "no-cache");
         proxyReq.setHeader("Connection", "keep-alive");
-        console.log("🌊 Streaming request detected: " + req.url);
-      }
-
-      if (
-        customReq._err &&
-        "writeHead" in res &&
-        typeof res.writeHead === "function"
-      ) {
-        // Add CORS headers to error responses
-        const origin = req.headers.origin || "http://localhost:5173";
-        res.writeHead(500, {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": origin,
-          "Access-Control-Allow-Credentials": "true",
-          "Access-Control-Expose-Headers": "Content-Length,Content-Type",
-        });
-        if ("end" in res && typeof res.end === "function") {
-          res.end(
-            JSON.stringify({
-              error: "ProxyError",
-              message: customReq._err.message || "Failed to proxy request",
-            }),
-          );
-        }
-        return;
+        console.log("🌊 SSE request: " + req.url);
       }
     },
-    proxyRes: (proxyRes, req) => {
-      // Daytona won't send CORS headers because we set X-Daytona-Disable-CORS: true
-      // Our Express CORS middleware will add the correct headers
 
-      // Handle non-200 responses
+    proxyRes: (proxyRes, req) => {
       if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
-        const customReq = req as CustomRequest;
+        const proxyReq = req as ProxyRequest;
         console.warn(
-          `⚠️  Proxy response error: ${proxyRes.statusCode} for ${customReq._targetUrl}`,
+          `⚠️  HTTP ${proxyRes.statusCode} from ${proxyReq.targetUrl}`,
         );
       }
     },
+
     error: (err, req, res) => {
-      console.error("❌ Proxy middleware error:", err);
-      if ("writeHead" in res && typeof res.writeHead === "function") {
-        // Add CORS headers to error responses
-        const origin = req.headers.origin || "http://localhost:5173";
-        res.writeHead(502, {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": origin,
-          "Access-Control-Allow-Credentials": "true",
-          "Access-Control-Expose-Headers": "Content-Length,Content-Type",
-        });
-        if ("end" in res && typeof res.end === "function") {
-          res.end(
-            JSON.stringify({
-              error: "BadGateway",
-              message: "Failed to connect to sandbox",
-            }),
-          );
-        }
-      }
+      console.error("❌ Proxy error:", err.message);
+      sendError(
+        res as Response,
+        502,
+        "BadGateway",
+        "Failed to connect to sandbox",
+      );
     },
   },
 };
@@ -267,42 +249,14 @@ const proxyMiddleware = createProxyMiddleware(proxyOptions);
 // Create Express app
 const app = express();
 
-// CORS configuration - allow requests from any origin
-// This is necessary for the frontend to connect to the proxy
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
-  : ["http://localhost:5173", "https://localhost:5173"];
-
+// CORS middleware
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, Postman)
-      if (!origin) return callback(null, true);
-
-      // Check if origin is in allowed list or matches wildcard
-      if (
-        ALLOWED_ORIGINS.includes("*") ||
-        ALLOWED_ORIGINS.includes(origin) ||
-        ALLOWED_ORIGINS.some((allowed) => {
-          if (allowed.includes("*")) {
-            const pattern = new RegExp(
-              "^" + allowed.replace(/\*/g, ".*") + "$",
-            );
-            return pattern.test(origin);
-          }
-          return false;
-        })
-      ) {
-        callback(null, true);
-      } else {
-        callback(null, true); // Allow all origins for now (can restrict later)
-      }
-    },
+    origin: ALLOWED_ORIGINS.includes("*") ? true : ALLOWED_ORIGINS,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     exposedHeaders: ["Content-Length", "Content-Type"],
-    maxAge: 86400, // 24 hours
   }),
 );
 
@@ -320,32 +274,27 @@ app.get("/health", (_req: Request, res: Response) => {
 
 // Stats endpoint
 app.get("/stats", (_req: Request, res: Response) => {
-  const stats: Record<string, any> = {
-    totalCached: urlCache.size,
-    entries: [],
-  };
-
   const now = Date.now();
-  for (const [key, entry] of urlCache.entries()) {
+  const entries = Array.from(urlCache.entries()).map(([key, entry]) => {
     const age = now - entry.timestamp;
     const remaining = Math.max(0, CACHE_TTL - age);
-    stats.entries.push({
+    return {
       key,
       age: Math.floor(age / 1000),
       remaining: Math.floor(remaining / 1000),
-    });
-  }
+    };
+  });
 
-  res.json(stats);
+  res.json({
+    totalCached: urlCache.size,
+    entries,
+  });
 });
 
 // Apply proxy middleware to all other routes
 app.use(proxyMiddleware);
 
 // Start server
-// Bind to 0.0.0.0 for cloud platforms (Render, Fly.io, Railway, etc.)
-const HOST = process.env.HOST || "0.0.0.0";
-
 app.listen(Number(PORT), HOST, () => {
   console.log("\n" + "=".repeat(60));
   console.log("🔄 Open GitHub Daytona Proxy Server");
