@@ -230,19 +230,6 @@ const proxyOptions: Options<Request, Response> = {
       // Daytona won't send CORS headers because we set X-Daytona-Disable-CORS: true
       // Our Express CORS middleware will add the correct headers
 
-      // For SSE responses, preserve content-type and don't remove encoding
-      const isSSE =
-        proxyRes.headers["content-type"]?.includes("text/event-stream");
-
-      if (!isSSE) {
-        // Remove content-encoding to prevent Cloudflare/browser decompression issues
-        // Let Cloudflare re-compress if needed
-        delete proxyRes.headers["content-encoding"];
-        delete proxyRes.headers["content-length"]; // Must be removed when removing encoding
-      } else {
-        console.log("🌊 SSE response detected, preserving headers");
-      }
-
       // Handle non-200 responses
       if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
         const customReq = req as CustomRequest;
