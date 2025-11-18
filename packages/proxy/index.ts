@@ -1,0 +1,253 @@
+import express from "express";
+import type { Request, Response } from "express";
+import * as dotenv from "dotenv";
+import { createProxyMiddleware, type Options } from "http-proxy-middleware";
+import { Daytona } from "@daytonaio/sdk";
+
+dotenv.config({ quiet: true });
+
+const DAYTONA_API_KEY = process.env.DAYTONA_API_KEY;
+const PORT = process.env.PORT || 3002;
+const PROXY_DOMAIN = process.env.PROXY_DOMAIN || "localhost";
+const CACHE_TTL = parseInt(process.env.CACHE_TTL || "300000", 10); // 5 minutes default
+
+if (!DAYTONA_API_KEY) {
+  throw new Error("DAYTONA_API_KEY is not set");
+}
+
+// Initialize Daytona SDK
+const daytona = new Daytona({
+  apiKey: DAYTONA_API_KEY,
+  target: "us", // Can be made configurable
+});
+
+// Cache for sandbox preview URLs
+interface CacheEntry {
+  url: string;
+  timestamp: number;
+}
+
+const urlCache = new Map<string, CacheEntry>();
+
+// Clean up expired cache entries every minute
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [key, entry] of urlCache.entries()) {
+    if (now - entry.timestamp > CACHE_TTL) {
+      urlCache.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    console.log(`🧹 Cleaned ${cleaned} expired cache entries`);
+  }
+}, 60000);
+
+/**
+ * Parse sandbox ID and port from subdomain
+ * Format: {port}-{sandboxId}.{domain}
+ * Example: 4096-abc123def456.proxy.yourdomain.com
+ */
+function parseSandboxInfo(host: string): {
+  sandboxId: string;
+  port: number;
+} {
+  const parts = host.split(".");
+  if (parts.length < 2) {
+    throw new Error("Invalid host format");
+  }
+
+  const subdomain = parts[0];
+  if (!subdomain) {
+    throw new Error("Invalid subdomain");
+  }
+
+  const subdomainParts = subdomain.split("-");
+
+  if (subdomainParts.length < 2) {
+    throw new Error("Invalid subdomain format. Expected: {port}-{sandboxId}");
+  }
+
+  const portStr = subdomainParts[0];
+  if (!portStr) {
+    throw new Error("Port is missing from subdomain");
+  }
+
+  const port = parseInt(portStr, 10);
+  const sandboxId = subdomainParts.slice(1).join("-");
+
+  if (isNaN(port)) {
+    throw new Error("Invalid port number");
+  }
+
+  return { sandboxId, port };
+}
+
+/**
+ * Get preview URL with caching
+ */
+async function getPreviewUrl(sandboxId: string, port: number): Promise<string> {
+  const cacheKey = `${sandboxId}:${port}`;
+
+  // Check cache
+  const cached = urlCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    console.log(`✅ Cache hit for ${sandboxId}:${port}`);
+    return cached.url;
+  }
+
+  // Fetch from Daytona SDK
+  console.log(`🔍 Fetching preview URL for ${sandboxId}:${port}`);
+  const sandbox = await daytona.get(sandboxId);
+
+  // Get the preview link for the specified port
+  const previewLink = await sandbox.getPreviewLink(port);
+  const previewUrl = previewLink.url;
+
+  // Cache the result
+  urlCache.set(cacheKey, {
+    url: previewUrl,
+    timestamp: Date.now(),
+  });
+
+  console.log(`💾 Cached preview URL for ${sandboxId}:${port}`);
+
+  return previewUrl;
+}
+
+// Custom request interface to store error info
+interface CustomRequest extends Request {
+  _err?: Error;
+  _targetUrl?: string;
+}
+
+/**
+ * Create proxy middleware
+ */
+const proxyOptions: Options<Request, Response> = {
+  router: async (req: Request) => {
+    const customReq = req as CustomRequest;
+    try {
+      if (!req.headers.host) {
+        throw new Error("Host header is required");
+      }
+
+      const { sandboxId, port } = parseSandboxInfo(req.headers.host);
+      const url = await getPreviewUrl(sandboxId, port);
+
+      customReq._targetUrl = url;
+      console.log(`🔄 Proxying ${req.method} ${req.url} → ${url}`);
+
+      return url;
+    } catch (error) {
+      console.error("❌ Router error:", error);
+      customReq._err = error as Error;
+    }
+
+    // Return dummy URL on error (will be handled by error handlers)
+    return "http://localhost:1";
+  },
+  changeOrigin: true,
+  autoRewrite: true,
+  ws: true, // Enable WebSocket support
+  xfwd: true,
+  on: {
+    proxyReq: (proxyReq, req, res) => {
+      const customReq = req as CustomRequest;
+      if (
+        customReq._err &&
+        "writeHead" in res &&
+        typeof res.writeHead === "function"
+      ) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        if ("end" in res && typeof res.end === "function") {
+          res.end(
+            JSON.stringify({
+              error: "ProxyError",
+              message: customReq._err.message || "Failed to proxy request",
+            }),
+          );
+        }
+        return;
+      }
+    },
+    proxyRes: (proxyRes, req) => {
+      // Handle non-200 responses
+      if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
+        const customReq = req as CustomRequest;
+        console.warn(
+          `⚠️  Proxy response error: ${proxyRes.statusCode} for ${customReq._targetUrl}`,
+        );
+      }
+    },
+    error: (err, req, res) => {
+      console.error("❌ Proxy middleware error:", err);
+      if ("writeHead" in res && typeof res.writeHead === "function") {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        if ("end" in res && typeof res.end === "function") {
+          res.end(
+            JSON.stringify({
+              error: "BadGateway",
+              message: "Failed to connect to sandbox",
+            }),
+          );
+        }
+      }
+    },
+  },
+};
+
+const proxyMiddleware = createProxyMiddleware(proxyOptions);
+
+// Create Express app
+const app = express();
+
+// Health check endpoint
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    cache: {
+      size: urlCache.size,
+      ttl: CACHE_TTL,
+    },
+  });
+});
+
+// Stats endpoint
+app.get("/stats", (_req: Request, res: Response) => {
+  const stats: Record<string, any> = {
+    totalCached: urlCache.size,
+    entries: [],
+  };
+
+  const now = Date.now();
+  for (const [key, entry] of urlCache.entries()) {
+    const age = now - entry.timestamp;
+    const remaining = Math.max(0, CACHE_TTL - age);
+    stats.entries.push({
+      key,
+      age: Math.floor(age / 1000),
+      remaining: Math.floor(remaining / 1000),
+    });
+  }
+
+  res.json(stats);
+});
+
+// Apply proxy middleware to all other routes
+app.use(proxyMiddleware);
+
+// Start server
+app.listen(PORT, () => {
+  console.log("\n" + "=".repeat(60));
+  console.log("🔄 Open GitHub Daytona Proxy Server");
+  console.log("=".repeat(60));
+  console.log(`\n📍 Server: http://localhost:${PORT}`);
+  console.log(`🌐 Domain: ${PROXY_DOMAIN}`);
+  console.log(`💾 Cache TTL: ${CACHE_TTL / 1000}s`);
+  console.log(`\n📝 URL Format: {port}-{sandboxId}.${PROXY_DOMAIN}`);
+  console.log(`   Example: 4096-abc123.${PROXY_DOMAIN}`);
+  console.log("\n" + "=".repeat(60) + "\n");
+});

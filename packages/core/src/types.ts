@@ -66,6 +66,7 @@ export interface DaytonaConfig {
   apiUrl: string;
   apiKey: string;
   workspaceClass: string;
+  proxyDomain?: string; // Optional: Custom proxy domain for bypassing Daytona warning screen
 }
 
 export interface SandboxConfiguration {

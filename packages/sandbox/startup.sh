@@ -54,7 +54,7 @@ echo ""
 
 # Run OpenCode server
 # Note: Alpine uses musl, so we need the musl-specific binary
-OPENCODE_BIN="/root/.bun/install/global/node_modules/opencode-linux-x64-musl/bin/opencode"
+OPENCODE_BIN="/root/.bun/install/global/node_modules/opencode-linux-arm64-musl/bin/opencode"
 
 if [ ! -f "$OPENCODE_BIN" ]; then
   echo "❌ Error: OpenCode binary not found at $OPENCODE_BIN"

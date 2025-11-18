@@ -19,6 +19,7 @@ const daytonaConfigSchema = z.object({
   apiUrl: z.string(),
   apiKey: z.string(),
   workspaceClass: z.enum(["small", "medium", "large"]).default("small"),
+  proxyDomain: z.string().optional(), // Optional custom proxy domain
 });
 
 const sandboxConfigSchema = z.object({
@@ -84,7 +85,7 @@ function parseIntEnv(value: string | undefined, defaultValue: number): number {
  * - ALLOWED_ORIGINS: Comma-separated list of allowed origins
  */
 function loadConfig(): AppConfig {
-  const provider = (process.env.SANDBOX_PROVIDER || "daytona") as
+  const provider = (process.env.SANDBOX_PROVIDER || "docker") as
     | "docker"
     | "daytona";
 
@@ -99,11 +100,14 @@ function loadConfig(): AppConfig {
       },
       daytona: {
         apiUrl: process.env.DAYTONA_API_URL || "https://app.daytona.io/api",
-        apiKey: process.env.DAYTONA_API_KEY || "dtn_a49447e431ee194dc564339c53d0d183b481cd12399d8fb31d81876266db5067",
+        apiKey:
+          process.env.DAYTONA_API_KEY ||
+          "dtn_a49447e431ee194dc564339c53d0d183b481cd12399d8fb31d81876266db5067",
         workspaceClass: (process.env.DAYTONA_WORKSPACE_CLASS || "small") as
           | "small"
           | "medium"
           | "large",
+        proxyDomain: process.env.DAYTONA_PROXY_DOMAIN || "http://localhost:3002", // Optional proxy domain
       },
       sessionTimeout: parseIntEnv(process.env.SESSION_TIMEOUT, 3600),
       maxConcurrent: parseIntEnv(process.env.MAX_CONCURRENT_SANDBOXES, 10),

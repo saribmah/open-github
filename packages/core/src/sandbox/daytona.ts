@@ -55,17 +55,25 @@ export class DaytonaProvider implements SandboxProvider {
       // Get preview link for OpenCode server (port 4096)
       const previewLink = await sandbox.getPreviewLink(4096);
 
+      // Use custom proxy domain if configured, otherwise use Daytona preview URL
+      const accessUrl = this.config.proxyDomain
+        ? `https://4096-${sandbox.id}.${this.config.proxyDomain}`
+        : previewLink.url;
+
       console.log(`  🌐 Preview URL: ${previewLink.url}`);
+      if (this.config.proxyDomain) {
+        console.log(`  🔄 Proxy URL: ${accessUrl}`);
+      }
 
       // Start the OpenCode server with repository
       await this.startOpenCodeServer(sandbox, config);
 
-      // Wait for server to be ready
+      // Wait for server to be ready (use direct URL for health check)
       await this.waitForServerReady(previewLink.url);
 
       return {
         id: sandbox.id,
-        url: previewLink.url,
+        url: accessUrl, // Return proxy URL if configured
         status: "ready",
       };
     } catch (error) {
@@ -151,9 +159,9 @@ export class DaytonaProvider implements SandboxProvider {
           console.log(`  ✅ OpenCode server is ready`);
           return;
         }
-      } catch(e) {
+      } catch (e) {
         // Server not ready yet
-          console.log(e)
+        console.log(e);
       }
 
       await new Promise((resolve) => setTimeout(resolve, 2000));
