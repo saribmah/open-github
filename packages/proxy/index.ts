@@ -197,6 +197,15 @@ const proxyOptions: Options<Request, Response> = {
       }
     },
     proxyRes: (proxyRes, req) => {
+      // Remove Daytona's CORS headers to prevent conflicts with our CORS middleware
+      // Our Express CORS middleware will add the correct headers
+      delete proxyRes.headers["access-control-allow-origin"];
+      delete proxyRes.headers["access-control-allow-credentials"];
+      delete proxyRes.headers["access-control-allow-methods"];
+      delete proxyRes.headers["access-control-allow-headers"];
+      delete proxyRes.headers["access-control-expose-headers"];
+      delete proxyRes.headers["access-control-max-age"];
+
       // Handle non-200 responses
       if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
         const customReq = req as CustomRequest;
