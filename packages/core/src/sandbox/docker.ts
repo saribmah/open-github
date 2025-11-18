@@ -132,8 +132,9 @@ export class DockerProvider implements SandboxProvider {
 
       console.log(`   🌐 Sandbox URL: ${url}`);
 
-      // Wait for container to be ready (basic check)
-      await this.waitForContainer(containerId, 5000);
+      // Wait for container to be ready and OpenCode server to respond
+      console.log(`   ⏳ Waiting for OpenCode server to be ready...`);
+      await this.waitForContainer(containerId, 60000); // 60 second timeout
 
       return {
         id: containerId,
@@ -158,7 +159,7 @@ export class DockerProvider implements SandboxProvider {
   }
 
   /**
-   * Wait for container to be running
+   * Wait for container to be running and OpenCode server to be ready
    */
   private async waitForContainer(
     containerId: string,
@@ -169,14 +170,18 @@ export class DockerProvider implements SandboxProvider {
     while (Date.now() - startTime < timeoutMs) {
       try {
         const status = await this.getStatus(containerId);
-        if (status.status === "ready") {
+        if (status.status === "ready" && status.url) {
+          console.log(`   ✅ OpenCode server is ready and responding`);
           return;
         }
-      } catch {
-        // Container not ready yet
+        if (status.status === "error" || status.status === "terminated") {
+          throw new Error(status.error || "Container failed");
+        }
+      } catch (error) {
+        // Container not ready yet, continue waiting
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     throw new Error("Container failed to start within timeout");
@@ -218,6 +223,17 @@ export class DockerProvider implements SandboxProvider {
       // Use 127.0.0.1 instead of localhost to avoid IPv6 issues
       const url = `http://127.0.0.1:${hostPort}`;
 
+      // Check if OpenCode server is actually responding
+      const isServerReady = await this.checkServerReady(url);
+
+      if (!isServerReady) {
+        return {
+          id: containerId,
+          status: "provisioning",
+          url: undefined, // Don't return URL until server is ready
+        };
+      }
+
       return {
         id: containerId,
         status: "ready",
@@ -229,6 +245,20 @@ export class DockerProvider implements SandboxProvider {
         status: "error",
         error: `Failed to get container status: ${error}`,
       };
+    }
+  }
+
+  /**
+   * Check if OpenCode server is ready to accept requests
+   */
+  private async checkServerReady(url: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${url}/doc`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      return response.ok;
+    } catch {
+      return false;
     }
   }
 

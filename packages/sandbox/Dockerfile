@@ -9,6 +9,8 @@ RUN apk add --no-cache \
     bash \
     curl \
     ca-certificates \
+    tar \
+    ripgrep \
     && rm -rf /var/cache/apk/*
 
 # Install OpenCode globally via npm
