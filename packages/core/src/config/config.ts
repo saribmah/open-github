@@ -85,7 +85,7 @@ function parseIntEnv(value: string | undefined, defaultValue: number): number {
  * - ALLOWED_ORIGINS: Comma-separated list of allowed origins
  */
 function loadConfig(): AppConfig {
-  const provider = (process.env.SANDBOX_PROVIDER || "docker") as
+  const provider = (process.env.SANDBOX_PROVIDER || "daytona") as
     | "docker"
     | "daytona";
 
@@ -107,7 +107,7 @@ function loadConfig(): AppConfig {
           | "small"
           | "medium"
           | "large",
-        proxyDomain: process.env.DAYTONA_PROXY_DOMAIN || "http://localhost:3002", // Optional proxy domain
+        proxyDomain: process.env.DAYTONA_PROXY_DOMAIN || "proxy.open-github.com", // Optional proxy domain
       },
       sessionTimeout: parseIntEnv(process.env.SESSION_TIMEOUT, 3600),
       maxConcurrent: parseIntEnv(process.env.MAX_CONCURRENT_SANDBOXES, 10),

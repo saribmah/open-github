@@ -1,0 +1,9 @@
+# Local development environment variables
+# Copy this to .dev.vars and fill in your values
+# .dev.vars is automatically loaded by wrangler dev
+
+# GitHub Token for cloning private repositories (optional for public repos)
+GITHUB_TOKEN=ghp_your_github_personal_access_token_here
+
+# Environment flag
+ENVIRONMENT=development

@@ -1,0 +1,26 @@
+{
+  "name": "@open-github/cloudflare-service",
+  "version": "1.0.0",
+  "description": "GitHub repository sandbox orchestration with Cloudflare Workers",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:local": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "deploy:prod": "wrangler deploy --env production",
+    "tail": "wrangler tail",
+    "setup": "./scripts/setup-dev.sh",
+    "test:local": "./scripts/test-local.sh",
+    "containers:list": "wrangler containers list",
+    "docker:ps": "docker ps --format 'table {{.ID}}\\t{{.Image}}\\t{{.Status}}\\t{{.Ports}}'",
+    "docker:logs": "docker logs $(docker ps -q | head -n 1)"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "^0.5.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^4.49.0"
+  }
+}
