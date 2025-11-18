@@ -1,0 +1,28 @@
+{
+  "name": "@open-github/core",
+  "version": "1.0.0",
+  "description": "Backend core package",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "bun --hot src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir=dist --target=bun"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "catalog:",
+    "hono": "^4.10.6",
+    "remeda": "catalog:",
+    "zod": "catalog:"
+  }
+}
