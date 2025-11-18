@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response } from "express";
+import cors from "cors";
 import * as dotenv from "dotenv";
 import { createProxyMiddleware, type Options } from "http-proxy-middleware";
 import { Daytona } from "@daytonaio/sdk";
@@ -225,6 +226,45 @@ const proxyMiddleware = createProxyMiddleware(proxyOptions);
 
 // Create Express app
 const app = express();
+
+// CORS configuration - allow requests from any origin
+// This is necessary for the frontend to connect to the proxy
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+  : ["http://localhost:5173", "https://localhost:5173"];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
+
+      // Check if origin is in allowed list or matches wildcard
+      if (
+        ALLOWED_ORIGINS.includes("*") ||
+        ALLOWED_ORIGINS.includes(origin) ||
+        ALLOWED_ORIGINS.some((allowed) => {
+          if (allowed.includes("*")) {
+            const pattern = new RegExp(
+              "^" + allowed.replace(/\*/g, ".*") + "$",
+            );
+            return pattern.test(origin);
+          }
+          return false;
+        })
+      ) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Allow all origins for now (can restrict later)
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    exposedHeaders: ["Content-Length", "Content-Type"],
+    maxAge: 86400, // 24 hours
+  }),
+);
 
 // Health check endpoint
 app.get("/health", (_req: Request, res: Response) => {
