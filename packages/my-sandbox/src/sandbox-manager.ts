@@ -22,7 +22,7 @@ export class SandboxManager {
         const body = (await request.json()) as any;
 
         if (body.action === "create") {
-          return await this.createSandbox(body);
+          return await this.createSandbox(request.url, body);
         }
       }
 
@@ -83,7 +83,7 @@ export class SandboxManager {
     }
   }
 
-  private async createSandbox(params: {
+  private async createSandbox(hostname: string, params: {
     owner: string;
     repo: string;
     branch: string;
@@ -209,11 +209,48 @@ export class SandboxManager {
       );
       console.log("OpenCode verify result:", ocVerifyResult);
 
-      // Wait a bit for everything to settle
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Expose the port and get preview URL (production only)
+      // Start OpenCode server in background
+      console.log("Starting OpenCode server...");
       const port = parseInt(this.env.OPENCODE_PORT || "4096");
+
+      await sandbox.startProcess(
+        `/root/.opencode/bin/opencode serve --port=${port} --hostname=0.0.0.0`,
+        {
+          cwd: "/workspace/repo",
+          env: {
+            PATH: "/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+          },
+        },
+      );
+      console.log(`OpenCode server started on port ${port}`);
+
+      // Wait for OpenCode server to be ready
+      console.log("Waiting for OpenCode server to be ready...");
+      let serverReady = false;
+      for (let i = 0; i < 15; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Check if server is responding (any response means it's running)
+        const healthCheck = await sandbox.exec(
+          `curl -s -o /dev/null -w "%{http_code}" http://localhost:${port}/ 2>&1`,
+        );
+
+        // Any HTTP response code means the server is running (200, 404, etc.)
+        if (healthCheck.success && healthCheck.stdout.match(/^[2-5]\d{2}$/)) {
+          serverReady = true;
+          console.log(`OpenCode server is ready! (HTTP ${healthCheck.stdout})`);
+          break;
+        }
+        console.log(`Waiting for server... attempt ${i + 1}/15`);
+      }
+
+      if (!serverReady) {
+        console.warn(
+          "OpenCode server did not become ready in time, but continuing...",
+        );
+      }
+
+      // Expose the port and get preview URL
       let exposedUrl: string | null = null;
 
       if (this.env.ENVIRONMENT === "production" && this.env.WORKER_HOSTNAME) {
@@ -222,13 +259,16 @@ export class SandboxManager {
             hostname: this.env.WORKER_HOSTNAME,
             name: "opencode",
           });
-          // The SDK returns { url, port, name }
-          exposedUrl = (exposed as any).url || null;
+          // The SDK returns { exposedAt, port, name }
+          exposedUrl = (exposed as any).exposedAt || null;
+          console.log("OpenCode server exposed at:", exposedUrl);
         } catch (error) {
           console.warn("Failed to expose port (expected in local dev):", error);
           // In local dev, we can't expose preview URLs
           // The sandbox is still running and accessible via Docker
         }
+      } else {
+        console.log("Running in development mode - port exposure skipped");
       }
 
       // Update session with URL and mark as ready

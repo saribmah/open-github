@@ -4,4 +4,5 @@ FROM docker.io/cloudflare/sandbox:0.5.1
 # FROM --platform=linux/arm64 docker.io/cloudflare/sandbox:0.5.1
 
 # Required during local development to access exposed ports
-#EXPOSE 8080
+# OpenCode server port
+EXPOSE 4096
