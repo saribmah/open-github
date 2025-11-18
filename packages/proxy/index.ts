@@ -85,6 +85,26 @@ function parseSandboxInfo(host: string): {
 }
 
 /**
+ * Restore UUID format from DNS-safe sandbox ID
+ * Converts: 9cbb20f460984cd6ba1cdaf96c2ff9b3 → 9cbb20f4-6098-4cd6-ba1c-daf96c2ff9b3
+ */
+function restoreUuidFormat(sandboxId: string): string {
+  // If already has hyphens, return as-is
+  if (sandboxId.includes("-")) {
+    return sandboxId;
+  }
+
+  // Check if it looks like a UUID without hyphens (32 hex chars)
+  if (/^[0-9a-f]{32}$/i.test(sandboxId)) {
+    // Standard UUID format: 8-4-4-4-12
+    return `${sandboxId.slice(0, 8)}-${sandboxId.slice(8, 12)}-${sandboxId.slice(12, 16)}-${sandboxId.slice(16, 20)}-${sandboxId.slice(20)}`;
+  }
+
+  // Not a UUID, return as-is
+  return sandboxId;
+}
+
+/**
  * Get preview URL with caching
  */
 async function getPreviewUrl(sandboxId: string, port: number): Promise<string> {
@@ -97,9 +117,12 @@ async function getPreviewUrl(sandboxId: string, port: number): Promise<string> {
     return cached.url;
   }
 
+  // Restore UUID format for Daytona API (converts DNS-safe ID back to UUID)
+  const daytonaSandboxId = restoreUuidFormat(sandboxId);
+
   // Fetch from Daytona SDK
-  console.log(`🔍 Fetching preview URL for ${sandboxId}:${port}`);
-  const sandbox = await daytona.get(sandboxId);
+  console.log(`🔍 Fetching preview URL for ${daytonaSandboxId}:${port}`);
+  const sandbox = await daytona.get(daytonaSandboxId);
 
   // Get the preview link for the specified port
   const previewLink = await sandbox.getPreviewLink(port);

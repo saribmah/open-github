@@ -56,8 +56,10 @@ export class DaytonaProvider implements SandboxProvider {
       const previewLink = await sandbox.getPreviewLink(4096);
 
       // Use custom proxy domain if configured, otherwise use Daytona preview URL
+      // Remove hyphens from sandbox ID for DNS compatibility (UUIDs have hyphens)
+      const dnsFreeSandboxId = sandbox.id.replace(/-/g, "");
       const accessUrl = this.config.proxyDomain
-        ? `https://4096-${sandbox.id}.${this.config.proxyDomain}`
+        ? `https://4096-${dnsFreeSandboxId}.${this.config.proxyDomain}`
         : previewLink.url;
 
       console.log(`  🌐 Preview URL: ${previewLink.url}`);
