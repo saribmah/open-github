@@ -179,6 +179,12 @@ const proxyOptions: Options<Request, Response> = {
   on: {
     proxyReq: (proxyReq, req, res) => {
       const customReq = req as CustomRequest;
+
+      // Add Daytona-specific headers to disable their CORS and preview warning
+      // This prevents duplicate CORS headers and skips the preview warning page
+      proxyReq.setHeader("X-Daytona-Disable-CORS", "true");
+      proxyReq.setHeader("X-Daytona-Skip-Preview-Warning", "true");
+
       if (
         customReq._err &&
         "writeHead" in res &&
@@ -204,14 +210,8 @@ const proxyOptions: Options<Request, Response> = {
       }
     },
     proxyRes: (proxyRes, req) => {
-      // Remove Daytona's CORS headers to prevent conflicts with our CORS middleware
+      // Daytona won't send CORS headers because we set X-Daytona-Disable-CORS: true
       // Our Express CORS middleware will add the correct headers
-      delete proxyRes.headers["access-control-allow-origin"];
-      delete proxyRes.headers["access-control-allow-credentials"];
-      delete proxyRes.headers["access-control-allow-methods"];
-      delete proxyRes.headers["access-control-allow-headers"];
-      delete proxyRes.headers["access-control-expose-headers"];
-      delete proxyRes.headers["access-control-max-age"];
 
       // Remove content-encoding to prevent Cloudflare/browser decompression issues
       // Let Cloudflare re-compress if needed
