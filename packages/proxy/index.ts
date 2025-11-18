@@ -240,11 +240,14 @@ app.get("/stats", (_req: Request, res: Response) => {
 app.use(proxyMiddleware);
 
 // Start server
-app.listen(PORT, () => {
+// Bind to 0.0.0.0 for cloud platforms (Render, Fly.io, Railway, etc.)
+const HOST = process.env.HOST || "0.0.0.0";
+
+app.listen(Number(PORT), HOST, () => {
   console.log("\n" + "=".repeat(60));
   console.log("🔄 Open GitHub Daytona Proxy Server");
   console.log("=".repeat(60));
-  console.log(`\n📍 Server: http://localhost:${PORT}`);
+  console.log(`\n📍 Server: http://${HOST}:${PORT}`);
   console.log(`🌐 Domain: ${PROXY_DOMAIN}`);
   console.log(`💾 Cache TTL: ${CACHE_TTL / 1000}s`);
   console.log(`\n📝 URL Format: {port}-{sandboxId}.${PROXY_DOMAIN}`);
