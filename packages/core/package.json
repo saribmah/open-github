@@ -26,6 +26,7 @@
     "typescript": "catalog:"
   },
   "dependencies": {
+    "@daytonaio/sdk": "^0.115.0",
     "@hono/zod-validator": "catalog:",
     "cors": "^2.8.5",
     "hono": "4.7.10",

@@ -84,7 +84,7 @@ function parseIntEnv(value: string | undefined, defaultValue: number): number {
  * - ALLOWED_ORIGINS: Comma-separated list of allowed origins
  */
 function loadConfig(): AppConfig {
-  const provider = (process.env.SANDBOX_PROVIDER || "docker") as
+  const provider = (process.env.SANDBOX_PROVIDER || "daytona") as
     | "docker"
     | "daytona";
 
@@ -98,8 +98,8 @@ function loadConfig(): AppConfig {
         cpuLimit: parseIntEnv(process.env.DOCKER_CPU_LIMIT, 1),
       },
       daytona: {
-        apiUrl: process.env.DAYTONA_API_URL || "",
-        apiKey: process.env.DAYTONA_API_KEY || "",
+        apiUrl: process.env.DAYTONA_API_URL || "https://app.daytona.io/api",
+        apiKey: process.env.DAYTONA_API_KEY || "dtn_a49447e431ee194dc564339c53d0d183b481cd12399d8fb31d81876266db5067",
         workspaceClass: (process.env.DAYTONA_WORKSPACE_CLASS || "small") as
           | "small"
           | "medium"
