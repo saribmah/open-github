@@ -36,6 +36,46 @@ app.onError((err, c) => {
   return c.json(errorResponse, errorResponse.statusCode as any);
 });
 
+// Validation helpers
+function validateCreateSandbox(body: any): {
+  valid: boolean;
+  data?: { owner: string; repo: string; branch?: string };
+  error?: string;
+} {
+  if (!body || typeof body !== "object") {
+    return { valid: false, error: "Request body must be an object" };
+  }
+  if (
+    !body.owner ||
+    typeof body.owner !== "string" ||
+    body.owner.length === 0
+  ) {
+    return {
+      valid: false,
+      error: "owner is required and must be a non-empty string",
+    };
+  }
+  if (!body.repo || typeof body.repo !== "string" || body.repo.length === 0) {
+    return {
+      valid: false,
+      error: "repo is required and must be a non-empty string",
+    };
+  }
+  if (body.branch !== undefined && typeof body.branch !== "string") {
+    return { valid: false, error: "branch must be a string" };
+  }
+  return {
+    valid: true,
+    data: {
+      owner: body.owner,
+      repo: body.repo,
+      branch: body.branch,
+    },
+  };
+}
+
+// Routes
+
 /**
  * Health check endpoint
  */
@@ -56,25 +96,19 @@ app.get("/health", (c) => {
  */
 app.post("/api/sandbox/create", async (c) => {
   const body = await c.req.json();
+  const validation = validateCreateSandbox(body);
 
-  // Validate request
-  if (!body.owner || !body.repo) {
-    return c.json(
-      {
-        error: "ValidationError",
-        message: "owner and repo are required",
-      },
-      400,
-    );
+  if (!validation.valid) {
+    return c.json({ error: "ValidationError", message: validation.error }, 400);
   }
 
-  const { owner, repo, branch } = body;
+  const { owner, repo, branch } = validation.data!;
 
   console.log(
     `📦 Creating sandbox for ${owner}/${repo}${branch ? `@${branch}` : ""}`,
   );
 
-  // Check concurrent limit
+  // Check if we've hit the concurrent limit
   if (sessionManager.getActiveCount() >= config.sandbox.maxConcurrent) {
     return c.json(
       {
@@ -86,7 +120,7 @@ app.post("/api/sandbox/create", async (c) => {
     );
   }
 
-  // Check for existing session
+  // Check if session already exists for this repo
   const existingSession = sessionManager.findByRepo(owner, repo);
   if (existingSession && existingSession.status === "ready") {
     console.log(`  ♻️  Reusing existing session: ${existingSession.id}`);
@@ -98,7 +132,7 @@ app.post("/api/sandbox/create", async (c) => {
     });
   }
 
-  // Validate repository
+  // Validate repository exists
   console.log(`  🔍 Validating repository...`);
   const isValid = await githubClient.validateRepository(owner, repo);
   if (!isValid) {
@@ -111,7 +145,7 @@ app.post("/api/sandbox/create", async (c) => {
     );
   }
 
-  // Get metadata
+  // Get repository metadata
   const metadata = await githubClient.getRepositoryMetadata(owner, repo);
   console.log(`  ✅ Repository validated: ${metadata.fullName}`);
 
@@ -136,6 +170,7 @@ app.post("/api/sandbox/create", async (c) => {
         cloneUrl: metadata.cloneUrl,
       });
 
+      // Update session with sandbox info
       sessionManager.update(session.id, {
         sandboxUrl: result.url,
         status: result.status,
@@ -152,12 +187,26 @@ app.post("/api/sandbox/create", async (c) => {
     }
   })();
 
-  return c.json({
-    sessionId: session.id,
-    status: "provisioning",
-    estimatedTime: 30,
+    return c.json({
+      sessionId: session.id,
+      status: "provisioning",
+      estimatedTime: 30, // seconds
+    });
   });
-});
+    }
+
+    return c.json({
+      sessionId: session.id,
+      status: session.status,
+      url: session.sandboxUrl,
+      owner: session.owner,
+      repo: session.repo,
+      provider: session.provider,
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      error: session.error,
+    });
+  });
 
 /**
  * Get sandbox status
@@ -166,65 +215,38 @@ app.post("/api/sandbox/create", async (c) => {
 app.get("/api/sandbox/:sessionId", async (c) => {
   const sessionId = c.req.param("sessionId");
 
-  const session = sessionManager.get(sessionId);
-  if (!session) {
-    return c.json(
-      {
-        error: "SessionNotFoundError",
-        message: `Session ${sessionId} not found`,
-      },
-      404,
-    );
+  if (!sessionId) {
+    return c.json({ error: "ValidationError", message: "sessionId is required" }, 400);
   }
 
-  return c.json({
-    sessionId: session.id,
-    status: session.status,
-    url: session.sandboxUrl,
-    owner: session.owner,
-    repo: session.repo,
-    provider: session.provider,
-    createdAt: session.createdAt,
-    expiresAt: session.expiresAt,
-    error: session.error,
+    const session = sessionManager.get(sessionId);
+    if (!session) {
+      return c.json(
+        {
+          error: "SessionNotFoundError",
+          message: `Session ${sessionId} not found`,
+        },
+        404,
+      );
+    }
+
+    // Terminate sandbox
+    if (session.containerId || session.workspaceId) {
+      const id = session.containerId || session.workspaceId!;
+      await sandboxProvider.terminate(id);
+    }
+
+    // Remove session
+    sessionManager.delete(sessionId);
+
+    return c.json({
+      success: true,
+      message: `Session ${sessionId} terminated`,
+    });
   });
-});
 
 /**
- * Delete/terminate a sandbox
- * DELETE /api/sandbox/:sessionId
- */
-app.delete("/api/sandbox/:sessionId", async (c) => {
-  const sessionId = c.req.param("sessionId");
-
-  const session = sessionManager.get(sessionId);
-  if (!session) {
-    return c.json(
-      {
-        error: "SessionNotFoundError",
-        message: `Session ${sessionId} not found`,
-      },
-      404,
-    );
-  }
-
-  // Terminate sandbox
-  if (session.containerId || session.workspaceId) {
-    const id = session.containerId || session.workspaceId!;
-    await sandboxProvider.terminate(id);
-  }
-
-  // Remove session
-  sessionManager.delete(sessionId);
-
-  return c.json({
-    success: true,
-    message: `Session ${sessionId} terminated`,
-  });
-});
-
-/**
- * Validate a repository
+ * Validate a repository (without creating sandbox)
  * GET /api/repo/validate
  */
 app.get("/api/repo/validate", async (c) => {
@@ -259,7 +281,7 @@ app.get("/api/repo/validate", async (c) => {
 });
 
 /**
- * List all sessions
+ * List all active sessions
  * GET /api/sandbox
  */
 app.get("/api/sandbox", (c) => {
@@ -281,11 +303,12 @@ app.get("/api/sandbox", (c) => {
 
 export default app;
 
-// Cleanup worker
+// Cleanup worker - runs every minute
 setInterval(() => {
   const expired = sessionManager.cleanup();
   if (expired.length > 0) {
     console.log(`🧹 Cleaned up ${expired.length} expired sessions`);
+    // Terminate their sandboxes
     for (const session of expired) {
       if (session.containerId || session.workspaceId) {
         const id = session.containerId || session.workspaceId!;
@@ -295,9 +318,9 @@ setInterval(() => {
       }
     }
   }
-}, 60000);
+}, 60000); // Every minute
 
-// Start server
+// If running as a standalone server
 if (import.meta.main) {
   const port = config.server.port;
   const host = config.server.host;

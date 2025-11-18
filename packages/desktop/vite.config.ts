@@ -1,8 +1,8 @@
-import { defineConfig } from "vite"
-import solidPlugin from "vite-plugin-solid"
-import tailwindcss from "@tailwindcss/vite"
-import path from "path"
-import { iconsSpritesheet } from "vite-plugin-icons-spritesheet"
+import { defineConfig } from "vite";
+import solidPlugin from "vite-plugin-solid";
+import tailwindcss from "@tailwindcss/vite";
+import path from "path";
+import { iconsSpritesheet } from "vite-plugin-icons-spritesheet";
 
 export default defineConfig({
   resolve: {
@@ -22,9 +22,9 @@ export default defineConfig({
   ],
   server: {
     host: "0.0.0.0",
-    port: 3000,
+    port: 5173,
   },
   build: {
     target: "esnext",
   },
-})
+});
