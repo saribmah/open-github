@@ -41,7 +41,7 @@ interface SandboxContextType {
 
 const SandboxContext = createContext<SandboxContextType>();
 
-const API_URL = import.meta.env.VITE_API_URL || "https://open-github.com";
+const API_URL = import.meta.env.VITE_API_URL || window.location.origin;
 
 interface SandboxProviderProps {
   owner?: string;

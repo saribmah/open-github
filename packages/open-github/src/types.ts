@@ -39,6 +39,7 @@ export interface SandboxSession {
 export interface Env {
   SANDBOX_MANAGER: any; // DurableObjectNamespace from Cloudflare Workers
   Sandbox: any; // Sandbox binding from @cloudflare/sandbox
+  ASSETS: Fetcher; // Static assets binding for desktop app
   GITHUB_API_URL: string;
   DEFAULT_BRANCH: string;
   OPENCODE_PORT: string;

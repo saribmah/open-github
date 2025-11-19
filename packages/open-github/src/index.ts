@@ -1,16 +1,18 @@
 import type { Env, CreateSandboxRequest, SandboxResponse } from "./types";
-import {proxyToSandbox} from "@cloudflare/sandbox";
+import { proxyToSandbox } from "@cloudflare/sandbox";
 
 export { Sandbox } from "@cloudflare/sandbox";
 export { SandboxManager } from "./sandbox-manager";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-      const proxyResponse = await proxyToSandbox(request, env);
-      if (proxyResponse) return proxyResponse;
+    const proxyResponse = await proxyToSandbox(request, env);
+    if (proxyResponse) return proxyResponse;
 
     const url = new URL(request.url);
     const path = url.pathname;
+
+      const isApiRoute = path.startsWith("/sandbox/") || path === "/health";
 
     // CORS headers for all responses
     const corsHeaders = {
@@ -137,6 +139,18 @@ export default {
           headers: corsHeaders,
         });
       }
+        if (!isApiRoute && env.ASSETS) {
+            // For SPA routing, try to serve the requested file
+            // If it doesn't exist (404), serve index.html
+            let response = await env.ASSETS.fetch(request);
+            // If the route is not a file (404), serve index.html for SPA routing
+            if (response.status === 404 && !path.includes(".")) {
+                response = await env.ASSETS.fetch(
+                    new URL("/index.html", request.url),
+                );
+            }
+            return response;
+        }
 
       // 404 for unknown routes
       return new Response(JSON.stringify({ error: "Not found" }), {

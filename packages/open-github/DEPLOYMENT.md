@@ -18,12 +18,27 @@ This will open a browser window to authenticate with your Cloudflare account.
 ## Step 2: Review Configuration
 
 The `wrangler.jsonc` is already configured with:
+
 - ✅ Durable Objects (SandboxManager, Sandbox)
 - ✅ Container configuration (Dockerfile)
 - ✅ Environment variables
 - ✅ Migrations for Durable Objects
+- ✅ Static assets (Desktop app)
 
-## Step 3: Deploy to Production
+## Step 3: Build the Desktop App
+
+Before deploying, build the desktop frontend:
+
+```bash
+cd ../desktop
+bun install
+bun run build
+cd ../open-github
+```
+
+This creates the `desktop/dist` folder that will be served as static assets.
+
+## Step 4: Deploy to Production
 
 ```bash
 bun run deploy
@@ -32,27 +47,39 @@ npx wrangler deploy
 ```
 
 This will:
+
 1. Build your Docker container image
 2. Upload it to Cloudflare
 3. Deploy the Worker with Durable Objects
 4. Create the necessary bindings
 
-## Step 4: Verify Deployment
+## Step 5: Verify Deployment
 
 After deployment, Wrangler will output your Worker URL:
 
 ```
-Published my-sandbox (X.XX sec)
-  https://my-sandbox.<your-subdomain>.workers.dev
+Published open-github (X.XX sec)
+  https://open-github.com
 ```
 
-Test the health endpoint:
+### Test the Desktop App
+
+Visit in your browser:
+
+```
+https://open-github.com/colinhacks/zod
+```
+
+This will load the desktop UI which then makes requests to the worker API.
+
+### Test the API Endpoint
 
 ```bash
-curl https://my-sandbox.<your-subdomain>.workers.dev/health
+curl https://open-github.com/health
 ```
 
 Expected response:
+
 ```json
 {
   "status": "healthy",
@@ -60,7 +87,27 @@ Expected response:
 }
 ```
 
-## Step 5: Test Sandbox Creation
+Published my-sandbox (X.XX sec)
+https://my-sandbox.<your-subdomain>.workers.dev
+
+````
+
+Test the health endpoint:
+
+```bash
+curl https://my-sandbox.<your-subdomain>.workers.dev/health
+````
+
+Expected response:
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-11-18T23:45:00.000Z"
+}
+```
+
+## Step 6: Test Sandbox Creation
 
 Create a sandbox with a unique sessionId:
 
@@ -85,7 +132,7 @@ This will take ~60+ seconds and return:
 }
 ```
 
-## Step 6: Check Sandbox Status
+## Step 7: Check Sandbox Status
 
 ```bash
 curl https://my-sandbox.<your-subdomain>.workers.dev/sandbox/<sessionId>
@@ -98,6 +145,7 @@ To enable OpenCode server preview URLs (expose port 4096 to the internet):
 ### 1. Add a Custom Domain
 
 In Cloudflare Dashboard:
+
 1. Go to Workers & Pages
 2. Select your worker
 3. Go to Settings > Domains & Routes
@@ -106,6 +154,7 @@ In Cloudflare Dashboard:
 ### 2. Set up Wildcard DNS
 
 Add a DNS record:
+
 ```
 Type: CNAME
 Name: *.sandbox
@@ -123,8 +172,8 @@ Add production environment configuration:
     "DEFAULT_BRANCH": "main",
     "OPENCODE_PORT": "4096",
     "ENVIRONMENT": "production",
-    "WORKER_HOSTNAME": "sandbox.yourdomain.com"
-  }
+    "WORKER_HOSTNAME": "sandbox.yourdomain.com",
+  },
 }
 ```
 
@@ -135,6 +184,7 @@ bun run deploy
 ```
 
 Now OpenCode servers will be accessible at:
+
 ```
 https://4096-<sandbox-id>.sandbox.yourdomain.com
 ```
@@ -144,11 +194,13 @@ https://4096-<sandbox-id>.sandbox.yourdomain.com
 Once deployed, your worker exposes these endpoints:
 
 ### Health Check
+
 ```bash
 GET https://my-sandbox.<your-subdomain>.workers.dev/health
 ```
 
 ### Create Sandbox
+
 ```bash
 POST https://my-sandbox.<your-subdomain>.workers.dev/sandbox/create
 Content-Type: application/json
@@ -163,11 +215,13 @@ Content-Type: application/json
 ```
 
 ### Get Sandbox Status
+
 ```bash
 GET https://my-sandbox.<your-subdomain>.workers.dev/sandbox/<sessionId>
 ```
 
 ### Delete Sandbox
+
 ```bash
 DELETE https://my-sandbox.<your-subdomain>.workers.dev/sandbox/<sessionId>
 ```
@@ -181,6 +235,7 @@ npx wrangler tail
 ```
 
 Or view in the Cloudflare Dashboard:
+
 1. Go to Workers & Pages
 2. Select your worker
 3. Click on "Logs" tab
@@ -215,6 +270,7 @@ Check logs with `wrangler tail` - this is usually a network issue. The sandbox w
 ## Cost Considerations
 
 Cloudflare Sandbox pricing:
+
 - Container instances: Billed per vCPU-second
 - Durable Objects: Storage + requests
 - Workers: Requests beyond free tier
@@ -227,4 +283,3 @@ See: https://developers.cloudflare.com/sandbox/pricing/
 - Implement authentication for /sandbox/create endpoint
 - Add rate limiting
 - Configure secrets for GitHub tokens
-
