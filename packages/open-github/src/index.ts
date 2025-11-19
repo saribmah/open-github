@@ -1,10 +1,14 @@
 import type { Env, CreateSandboxRequest, SandboxResponse } from "./types";
+import {proxyToSandbox} from "@cloudflare/sandbox";
 
 export { Sandbox } from "@cloudflare/sandbox";
 export { SandboxManager } from "./sandbox-manager";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+      const proxyResponse = await proxyToSandbox(request, env);
+      if (proxyResponse) return proxyResponse;
+
     const url = new URL(request.url);
     const path = url.pathname;
 

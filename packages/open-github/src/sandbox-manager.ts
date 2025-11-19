@@ -255,7 +255,7 @@ export class SandboxManager {
 
         try {
           const exposed = await sandbox.exposePort(port, {
-              hostname: "localhost",
+              hostname: "open-github.com",
             name: "opencode",
           });
           // The SDK returns { exposedAt, port, name }

@@ -4,13 +4,23 @@
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "my-sandbox",
+  "name": "open-github",
   "main": "src/index.ts",
   "compatibility_date": "2025-05-06",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
   },
+  "routes": [
+    {
+      "pattern": "open-github.com/*",
+      "zone_name": "open-github.com"
+    },
+    {
+      "pattern": "*.open-github.com/*",
+      "zone_name": "open-github.com"
+    }
+  ],
   /**
    * Smart Placement
    * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
@@ -45,8 +55,8 @@
     {
       "class_name": "Sandbox",
       "image": "./Dockerfile",
-      "instance_type": "lite",
-      "max_instances": 10,
+      "instance_type": "standard-1",
+      "max_instances": 100,
     },
   ],
   "durable_objects": {
