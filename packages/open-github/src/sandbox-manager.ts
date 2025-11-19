@@ -155,7 +155,7 @@ export class SandboxManager {
 
     // Get sandbox instance
     const sandbox = getSandbox(this.env.Sandbox, sandboxId, {
-      keepAlive: true, // Keep sandbox running
+      // keepAlive: true, // Keep sandbox running
     });
 
     try {
@@ -199,15 +199,37 @@ export class SandboxManager {
       console.log("Starting OpenCode server...");
       const port = parseInt(this.env.OPENCODE_PORT || "4096");
 
+        // Install OpenCode
+        console.log("Installing OpenCode...");
+        const installCommand = `curl -fsSL https://opencode.ai/install | bash`;
+        const installResult = await sandbox.exec(installCommand);
+        console.log("OpenCode install result:", installResult);
+
+        if (!installResult.success) {
+            console.warn(
+                "OpenCode installation failed, but continuing:",
+                installResult.stderr || installResult.stdout,
+            );
+            // Don't throw error - we can continue without OpenCode for now
+        }
+
+        // Verify OpenCode is installed (check the actual binary location)
+        const ocVerifyResult = await sandbox.exec(
+            `/root/.opencode/bin/opencode --version 2>&1 || echo "OpenCode not found"`,
+        );
+        console.log("OpenCode verify result:", ocVerifyResult);
+
       // Determine the repo directory name
       const repoName = params.repo.split("/").pop() || params.repo;
-
-      await sandbox.startProcess(
-        `opencode serve --port=${port} --hostname=0.0.0.0`,
-        {
-          cwd: `/workspace/${repoName}`,
-        },
-      );
+        await sandbox.startProcess(
+            `/root/.opencode/bin/opencode serve --port=${port} --hostname=0.0.0.0`,
+            {
+                cwd: "/workspace",
+                env: {
+                    PATH: "/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                },
+            },
+        );
       console.log(`OpenCode server started on port ${port}`);
 
       // Wait for OpenCode server to be ready
