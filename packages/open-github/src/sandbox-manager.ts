@@ -175,8 +175,8 @@ export class SandboxManager {
       console.log(`Cloning repository: ${repoUrl}`);
 
       const cloneCommand = params.branch
-        ? `cd /workspace && git clone --depth 1 --branch ${params.branch} ${repoUrl} repo 2>&1 || git clone --depth 1 ${repoUrl} repo 2>&1`
-        : `cd /workspace && git clone --depth 1 ${repoUrl} repo 2>&1`;
+        ? `cd /workspace && git clone --depth 1 --branch ${params.branch} ${repoUrl} 2>&1 || git clone --depth 1 ${repoUrl} 2>&1`
+        : `cd /workspace && git clone --depth 1 ${repoUrl} 2>&1`;
 
       const cloneResult = await sandbox.exec(cloneCommand);
       console.log("Clone result:", cloneResult);
@@ -188,44 +188,24 @@ export class SandboxManager {
       }
 
       // Verify the clone worked by checking the directory
-      const verifyResult = await sandbox.exec(`ls -la /workspace/repo`);
+      const verifyResult = await sandbox.exec(`ls -la /workspace`);
       console.log("Verify result:", verifyResult);
 
-      // Update status to starting (installing OpenCode)
+      // Update status to starting OpenCode server
       this.session.status = "starting";
       await this.saveSession();
 
-      // Install OpenCode
-      console.log("Installing OpenCode...");
-      const installCommand = `curl -fsSL https://opencode.ai/install | bash`;
-      const installResult = await sandbox.exec(installCommand);
-      console.log("OpenCode install result:", installResult);
-
-      if (!installResult.success) {
-        console.warn(
-          "OpenCode installation failed, but continuing:",
-          installResult.stderr || installResult.stdout,
-        );
-        // Don't throw error - we can continue without OpenCode for now
-      }
-
-      // Verify OpenCode is installed (check the actual binary location)
-      const ocVerifyResult = await sandbox.exec(
-        `/root/.opencode/bin/opencode --version 2>&1 || echo "OpenCode not found"`,
-      );
-      console.log("OpenCode verify result:", ocVerifyResult);
-
-      // Start OpenCode server in background
+      // Start OpenCode server in background (OpenCode is pre-installed in the Docker image)
       console.log("Starting OpenCode server...");
       const port = parseInt(this.env.OPENCODE_PORT || "4096");
 
+      // Determine the repo directory name
+      const repoName = params.repo.split("/").pop() || params.repo;
+
       await sandbox.startProcess(
-        `/root/.opencode/bin/opencode serve --port=${port} --hostname=0.0.0.0`,
+        `opencode serve --port=${port} --hostname=0.0.0.0`,
         {
-          cwd: "/workspace/repo",
-          env: {
-            PATH: "/root/.opencode/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-          },
+          cwd: `/workspace/${repoName}`,
         },
       );
       console.log(`OpenCode server started on port ${port}`);
