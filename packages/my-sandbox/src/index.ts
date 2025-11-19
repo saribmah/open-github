@@ -1,4 +1,3 @@
-import { getSandbox } from "@cloudflare/sandbox";
 import type { Env, CreateSandboxRequest, SandboxResponse } from "./types";
 
 export { Sandbox } from "@cloudflare/sandbox";
@@ -133,35 +132,6 @@ export default {
           status: 204,
           headers: corsHeaders,
         });
-      }
-
-      // Get or create a sandbox instance
-      const sandbox = getSandbox(env.Sandbox, "my-sandbox");
-
-      // Execute Python code
-      if (path === "/run") {
-        const result = await sandbox.exec('python3 -c "print(2 + 2)"');
-        return Response.json(
-          {
-            output: result.stdout,
-            error: result.stderr,
-            exitCode: result.exitCode,
-            success: result.success,
-          },
-          { headers: corsHeaders },
-        );
-      }
-
-      // Work with files
-      if (path === "/file") {
-        await sandbox.writeFile("/workspace/hello.txt", "Hello, Sandbox!");
-        const file = await sandbox.readFile("/workspace/hello.txt");
-        return Response.json(
-          {
-            content: file.content,
-          },
-          { headers: corsHeaders },
-        );
       }
 
       // 404 for unknown routes

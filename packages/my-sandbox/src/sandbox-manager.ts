@@ -253,23 +253,19 @@ export class SandboxManager {
       // Expose the port and get preview URL
       let exposedUrl: string | null = null;
 
-      if (this.env.ENVIRONMENT === "production" && this.env.WORKER_HOSTNAME) {
         try {
           const exposed = await sandbox.exposePort(port, {
-            hostname: this.env.WORKER_HOSTNAME,
+              hostname: "localhost",
             name: "opencode",
           });
           // The SDK returns { exposedAt, port, name }
-          exposedUrl = (exposed as any).exposedAt || null;
+          exposedUrl = exposed.url || null;
           console.log("OpenCode server exposed at:", exposedUrl);
         } catch (error) {
           console.warn("Failed to expose port (expected in local dev):", error);
           // In local dev, we can't expose preview URLs
           // The sandbox is still running and accessible via Docker
         }
-      } else {
-        console.log("Running in development mode - port exposure skipped");
-      }
 
       // Update session with URL and mark as ready
       this.session.url = exposedUrl;
