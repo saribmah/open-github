@@ -83,13 +83,16 @@ export class SandboxManager {
     }
   }
 
-  private async createSandbox(hostname: string, params: {
-    owner: string;
-    repo: string;
-    branch: string;
-    sessionId: string;
-    githubToken?: string;
-  }): Promise<Response> {
+  private async createSandbox(
+    hostname: string,
+    params: {
+      owner: string;
+      repo: string;
+      branch: string;
+      sessionId: string;
+      githubToken?: string;
+    },
+  ): Promise<Response> {
     // Check if sandbox already exists
     if (
       this.session &&
@@ -108,7 +111,10 @@ export class SandboxManager {
     }
 
     // Initialize session
-    const sandboxId = `sb-${params.sessionId}-${Date.now()}`;
+    // Use sessionId directly as sandboxId (already unique and DNS-safe)
+    // Add short timestamp suffix for uniqueness (last 6 digits of timestamp)
+    const shortTimestamp = Date.now().toString().slice(-6);
+    const sandboxId = `sb${params.sessionId}${shortTimestamp}`;
     this.session = {
       id: sandboxId,
       sessionId: params.sessionId,
@@ -253,19 +259,19 @@ export class SandboxManager {
       // Expose the port and get preview URL
       let exposedUrl: string | null = null;
 
-        try {
-          const exposed = await sandbox.exposePort(port, {
-              hostname: "open-github.com",
-            name: "opencode",
-          });
-          // The SDK returns { exposedAt, port, name }
-          exposedUrl = exposed.url || null;
-          console.log("OpenCode server exposed at:", exposedUrl);
-        } catch (error) {
-          console.warn("Failed to expose port (expected in local dev):", error);
-          // In local dev, we can't expose preview URLs
-          // The sandbox is still running and accessible via Docker
-        }
+      try {
+        const exposed = await sandbox.exposePort(port, {
+          hostname: "open-github.com",
+          name: "opencode",
+        });
+        // The SDK returns { exposedAt, port, name }
+        exposedUrl = exposed.url || null;
+        console.log("OpenCode server exposed at:", exposedUrl);
+      } catch (error) {
+        console.warn("Failed to expose port (expected in local dev):", error);
+        // In local dev, we can't expose preview URLs
+        // The sandbox is still running and accessible via Docker
+      }
 
       // Update session with URL and mark as ready
       this.session.url = exposedUrl;

@@ -41,7 +41,7 @@ interface SandboxContextType {
 
 const SandboxContext = createContext<SandboxContextType>();
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+const API_URL = import.meta.env.VITE_API_URL || "https://open-github.com";
 
 interface SandboxProviderProps {
   owner?: string;
@@ -73,24 +73,45 @@ export const SandboxProvider: ParentComponent<SandboxProviderProps> = (
       const userId = await getBrowserFingerprint();
       console.log(`  👤 User ID: ${userId}`);
 
+      // Generate a short sessionId by hashing the combination
+      // Only alphanumeric chars (no dashes, underscores) for DNS compatibility
+      const sessionString = `${userId}-${owner}-${repo}`;
+      const hash = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(sessionString),
+      );
+      const hashArray = Array.from(new Uint8Array(hash));
+      const hashHex = hashArray
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      // Format: first 8 alphanumeric chars of userId + 20 char hash = max 28 chars
+      // Remove all non-alphanumeric characters (including underscores) for DNS compatibility
+      const cleanUserId = userId.replace(/[^a-z0-9]/gi, "").substring(0, 8);
+      const generatedSessionId = `${cleanUserId}${hashHex.substring(0, 20)}`;
+      setSessionId(generatedSessionId);
+
       // Create sandbox
-      const createResponse = await fetch(`${API_URL}/api/sandbox/create`, {
+      const createResponse = await fetch(`${API_URL}/sandbox/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ owner, repo, branch, userId }),
+        body: JSON.stringify({
+          owner,
+          repo,
+          branch,
+          sessionId: generatedSessionId,
+        }),
       });
 
       if (!createResponse.ok) {
         const errorData = await createResponse.json();
-        throw new Error(errorData.message || "Failed to create sandbox");
+        throw new Error(errorData.error || "Failed to create sandbox");
       }
 
       const createData = await createResponse.json();
-      setSessionId(createData.sessionId);
 
-      console.log(`  ✅ Session created: ${createData.sessionId}`);
+      console.log(`  ✅ Session created: ${generatedSessionId}`);
 
       // If sandbox is already ready (reused)
       if (createData.status === "ready" && createData.url) {
@@ -102,7 +123,7 @@ export const SandboxProvider: ParentComponent<SandboxProviderProps> = (
 
       // Poll for sandbox status
       console.log(`  ⏳ Waiting for sandbox to be ready...`);
-      await pollSandboxStatus(createData.sessionId);
+      await pollSandboxStatus(generatedSessionId);
     } catch (err) {
       console.error("❌ Failed to request sandbox:", err);
       setError(err instanceof Error ? err.message : String(err));
@@ -113,9 +134,7 @@ export const SandboxProvider: ParentComponent<SandboxProviderProps> = (
   const pollSandboxStatus = async (sessionId: string, maxAttempts = 60) => {
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        const statusResponse = await fetch(
-          `${API_URL}/api/sandbox/${sessionId}`,
-        );
+        const statusResponse = await fetch(`${API_URL}/sandbox/${sessionId}`);
 
         if (!statusResponse.ok) {
           throw new Error("Failed to get sandbox status");
@@ -131,7 +150,9 @@ export const SandboxProvider: ParentComponent<SandboxProviderProps> = (
         }
 
         if (statusData.status === "error") {
-          throw new Error(statusData.error || "Sandbox failed to provision");
+          throw new Error(
+            statusData.errorMessage || "Sandbox failed to provision",
+          );
         }
 
         // Still provisioning, wait and retry
